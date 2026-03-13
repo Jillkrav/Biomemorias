@@ -449,8 +449,8 @@ const ProblematicasPage = () => {
                                                 <button
                                                     type="button"
                                                     onClick={() => {
-                                                        const id = Number(m && m.id_marcador);
-                                                        if (!Number.isFinite(id)) return;
+                                                        const id = m && m.id_marcador;
+                                                        if (!id) return;
                                                         setSelectedSectorId(null);
                                                         setSelectedSectorTitle(null);
                                                         navigate(`/map?markerId=${encodeURIComponent(String(id))}`);
@@ -566,8 +566,8 @@ const ProblematicasPage = () => {
                                                 <button
                                                     type="button"
                                                     onClick={() => {
-                                                        const id = Number(m && m.id_marcador);
-                                                        if (!Number.isFinite(id)) return;
+                                                        const id = m && m.id_marcador;
+                                                        if (!id) return;
                                                         setSelectedCategoriaTitulo(null);
                                                         navigate(`/map?markerId=${encodeURIComponent(String(id))}`);
                                                     }}

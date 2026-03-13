@@ -98,8 +98,7 @@ const Mapa2Page = () => {
       const params = new URLSearchParams(location.search);
       const raw = params.get('markerId');
       if (raw == null || raw === '') return null;
-      const n = Number(raw);
-      return Number.isFinite(n) ? n : null;
+      return raw;
     } catch (e) {
       return null;
     }
