@@ -1,15 +1,21 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet-draw';
+import 'leaflet-draw/dist/leaflet.draw.css';
 import { motion } from 'framer-motion';
 
 import { getConvexHull, calculateDistance, findClusters } from '../utils/clustering';
 
-const InteractiveMap = ({ markers, onMapClick, onCancelMarker, tempIcon = '📍', onUpdateTempIcon }) => {
+const InteractiveMap = ({ markers, onMapClick, onCancelMarker, tempIcon = '📍', onUpdateTempIcon, focusZoneName }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersLayerRef = useRef(null);
   const tempMarkerRef = useRef(null);
+  const drawnPolygonsRef = useRef(null); // FeatureGroup for yellow polygons
+  const zoneLayersRef = useRef([]); // [{ id, name, layer, vertices: [[lat,lng],...]}]
+  const zoneNamesRef = useRef(new Set());
+  const [loadingZones, setLoadingZones] = useState(false);
 
   // Valparaíso Region Bounds (Approximate)
   const valparaisoBounds = [
@@ -127,11 +133,165 @@ const InteractiveMap = ({ markers, onMapClick, onCancelMarker, tempIcon = '📍'
       if (onMapClick) {
         onMapClick(e.latlng);
       }
+
+      // Extend: increment count if inside a yellow polygon
+      try {
+        const hitZones = zoneLayersRef.current.filter((z) => pointInPolygon([e.latlng.lat, e.latlng.lng], z.vertices));
+        if (hitZones.length === 1) {
+          const zone = hitZones[0];
+          fetch(`/api/localizaciones/${zone.id}/incrementar`, {
+            method: 'PUT'
+          }).catch((err) => console.error('Increment error:', err));
+        }
+      } catch (err) {
+        console.error('Inside-check error:', err);
+      }
     });
 
     // Initialize markers layer
     const markersLayer = L.layerGroup().addTo(map);
     markersLayerRef.current = markersLayer;
+
+    // Initialize feature group for drawn yellow polygons
+    const drawn = new L.FeatureGroup();
+    drawn.addTo(map);
+    drawnPolygonsRef.current = drawn;
+
+    // Add draw control (polygon only)
+    const drawControl = new L.Control.Draw({
+      position: 'topright',
+      edit: {
+        featureGroup: drawn,
+        edit: false,
+        remove: false
+      },
+      draw: {
+        polygon: {
+          allowIntersection: false,
+          showArea: false,
+          shapeOptions: {
+            color: '#FFFF00',
+            weight: 1,
+            opacity: 0.3,
+            fillColor: 'rgba(255, 255, 0, 0.15)',
+            fillOpacity: 0.15
+          }
+        },
+        marker: false,
+        polyline: false,
+        rectangle: false,
+        circle: false,
+        circlemarker: false
+      }
+    });
+    map.addControl(drawControl);
+
+    // Handle polygon creation
+    map.on(L.Draw.Event.CREATED, async (event) => {
+      const layer = event.layer;
+      if (!(layer instanceof L.Polygon)) return;
+
+      const latlngsNested = layer.getLatLngs();
+      const latlngs = Array.isArray(latlngsNested[0]) ? latlngsNested[0] : latlngsNested; // outer ring
+      const vertices = latlngs.map((p) => [Number(p.lat), Number(p.lng)]);
+
+      const name = await promptUniqueName(zoneNamesRef.current);
+      if (!name) {
+        return; // canceled
+      }
+
+      const centroid = computeCentroid(vertices);
+      const coordStr = `${centroid[0].toFixed(2)},${centroid[1].toFixed(2)}`;
+
+      try {
+        const resp = await fetch('/api/localizaciones', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nombre_localizacion: name, coordenadas: coordStr, vertices })
+        });
+        if (!resp.ok) {
+          if (resp.status === 409) {
+            alert('Nombre duplicado. Intenta con otro.');
+          } else {
+            alert('Error guardando la zona.');
+          }
+          return;
+        }
+        const record = await resp.json();
+
+        // Style and add layer to feature group
+        layer.setStyle({ color: '#FFFF00', weight: 1, opacity: 0.3, fillColor: 'rgba(255, 255, 0, 0.15)', fillOpacity: 0.15 });
+        drawn.addLayer(layer);
+
+        // Add name label at centroid
+        const label = L.marker([centroid[0], centroid[1]], {
+          icon: L.divIcon({
+            className: 'zone-label',
+            html: `<div style="color: rgba(0,0,0,0.4); font-size: 13px; font-weight: 600; background: rgba(255,255,255,0.0); padding: 2px 4px; border-radius: 4px;">${escapeHtml(record.Nombre_localizacion)}</div>`
+          }),
+          interactive: false
+        }).addTo(map);
+
+        // Track layer metadata
+        zoneLayersRef.current.push({ id: record.ID_localizacion, name: record.Nombre_localizacion, layer, vertices });
+        zoneNamesRef.current.add(record.Nombre_localizacion);
+
+      } catch (err) {
+        console.error('Error al guardar zona:', err);
+        alert('Error de red guardando la zona.');
+      }
+    });
+
+    // Load existing zones from backend
+    (async () => {
+      setLoadingZones(true);
+      try {
+        const resp = await fetch('/api/localizaciones');
+        if (resp.ok) {
+          const data = await resp.json();
+          data.forEach((z) => {
+            try {
+              const verts = z.Vertices ? JSON.parse(z.Vertices) : null;
+              if (!verts || !Array.isArray(verts) || verts.length < 3) return;
+
+              const polygon = L.polygon(verts, {
+                color: '#FFFF00',
+                weight: 1,
+                opacity: 0.3,
+                fillColor: 'rgba(255, 255, 0, 0.15)',
+                fillOpacity: 0.15
+              }).addTo(drawn);
+
+              // label using Coordenadas center if present
+              let centerLatLng = null;
+              if (z.Coordenadas && typeof z.Coordenadas === 'string' && z.Coordenadas.includes(',')) {
+                const [latS, lngS] = z.Coordenadas.split(',');
+                const la = Number(latS);
+                const ln = Number(lngS);
+                if (!Number.isNaN(la) && !Number.isNaN(ln)) centerLatLng = [la, ln];
+              }
+              const centroid = centerLatLng || computeCentroid(verts);
+              L.marker([centroid[0], centroid[1]], {
+                icon: L.divIcon({
+                  className: 'zone-label',
+                  html: `<div style="color: rgba(0,0,0,0.4); font-size: 13px; font-weight: 600; background: rgba(255,255,255,0.0); padding: 2px 4px; border-radius: 4px;">${escapeHtml(z.Nombre_localizacion)}</div>`
+                }),
+                interactive: false
+              }).addTo(map);
+
+              zoneLayersRef.current.push({ id: z.ID_localizacion, name: z.Nombre_localizacion, layer: polygon, vertices: verts });
+              zoneNamesRef.current.add(z.Nombre_localizacion);
+            } catch (e) {
+              console.warn('Skip malformed zone:', e);
+            }
+          });
+        }
+      } catch (e) {
+        console.error('Error cargando zonas:', e);
+      } finally {
+        setLoadingZones(false);
+      }
+    })();
 
     return () => {
       map.remove();
@@ -151,7 +311,7 @@ const InteractiveMap = ({ markers, onMapClick, onCancelMarker, tempIcon = '📍'
     markersLayerRef.current.clearLayers();
 
     // Draw Convex Hull Polygon for clusters
-    const clusters = findClusters(markers, 5); // 5km max distance
+    const clusters = findClusters(markers, 0.4); // 5km max distance
 
     clusters.forEach(clusterMarkers => {
       if (clusterMarkers.length >= 3) {
@@ -349,6 +509,27 @@ const InteractiveMap = ({ markers, onMapClick, onCancelMarker, tempIcon = '📍'
     }
   }, [onCancelMarker]);
 
+  // Focus map on a zone by name
+  useEffect(() => {
+    if (!focusZoneName || !mapInstanceRef.current) return;
+    const normalize = (s) => s.toString().normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+    const target = normalize(focusZoneName);
+    const match = zoneLayersRef.current.find(z => normalize(z.name) === target);
+    if (match) {
+      const layer = match.layer;
+      try {
+        if (layer && layer.getBounds) {
+          mapInstanceRef.current.fitBounds(layer.getBounds(), { padding: [20, 20] });
+        } else if (match.vertices && Array.isArray(match.vertices)) {
+          const centroid = computeCentroid(match.vertices);
+          mapInstanceRef.current.setView([centroid[0], centroid[1]], 12);
+        }
+      } catch (e) {
+        // ignore focusing errors
+      }
+    }
+  }, [focusZoneName]);
+
   // Update temporary marker icon when tempIcon changes
   useEffect(() => {
     if (tempMarkerRef.current && mapInstanceRef.current && tempIcon) {
@@ -389,6 +570,15 @@ const InteractiveMap = ({ markers, onMapClick, onCancelMarker, tempIcon = '📍'
       className="relative w-full h-[600px] rounded-2xl overflow-hidden border-4 border-white shadow-xl"
     >
       <div ref={mapRef} className="w-full h-full z-10" />
+      <div className="absolute top-3 left-3 z-20 flex gap-2">
+        <button
+          onClick={() => window.open('/api/localizaciones/export', '_blank')}
+          className="px-3 py-1 rounded-md bg-white/90 text-[#006b6e] border border-[#e5ce8c] shadow hover:bg-white"
+          title="Exportar CSV"
+        >
+          Exportar CSV
+        </button>
+      </div>
       <style>{`
         .leaflet-container {
           background: #f0fdf4 !important; /* Light green background */
@@ -453,9 +643,61 @@ const InteractiveMap = ({ markers, onMapClick, onCancelMarker, tempIcon = '📍'
         .leaflet-popup-close-button {
           display: none !important;
         }
+        .zone-label { pointer-events: none; }
       `}</style>
     </motion.div>
   );
 };
 
 export default InteractiveMap;
+
+// Helpers
+function computeCentroid(vertices) {
+  // Simple average; vertices: [[lat,lng], ...]
+  const n = vertices.length;
+  const sum = vertices.reduce((acc, [la, ln]) => [acc[0] + la, acc[1] + ln], [0, 0]);
+  return [sum[0] / n, sum[1] / n];
+}
+
+async function promptUniqueName(existingSet) {
+  // loop prompt until valid or canceled
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const name = window.prompt('¿Nombre de esta zona?');
+    if (name == null) return null; // canceled
+    const trimmed = name.trim();
+    if (!trimmed) {
+      alert('El nombre no puede estar vacío.');
+      continue;
+    }
+    if (existingSet.has(trimmed)) {
+      alert('Ya existe una zona con ese nombre.');
+      continue;
+    }
+    return trimmed;
+  }
+}
+
+function pointInPolygon(point, vs) {
+  // ray-casting algorithm based on
+  // https://wrf.ecse.rpi.edu//Research/Short_Notes/pnpoly.html
+  const x = point[1];
+  const y = point[0];
+  let inside = false;
+  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+    const xi = vs[i][1], yi = vs[i][0];
+    const xj = vs[j][1], yj = vs[j][0];
+    const intersect = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi + 0.0) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}

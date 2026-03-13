@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+﻿import React, { useState, useEffect, useRef } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import Navbar from './Navbar';
 import { motion } from 'framer-motion';
 import { Map, Plus, MapPin, Trash2, Clock, Edit2, MousePointerClick, ArrowLeft } from 'lucide-react';
@@ -21,11 +21,19 @@ const MapPage = () => {
   const cancelMarkerRef = useRef(null);
   const updateTempIconRef = useRef(null);
   const { toast } = useToast();
+  const location = useLocation();
+  const [focusZoneName, setFocusZoneName] = useState(null);
 
   useEffect(() => {
     loadMarkers();
     loadClickCount();
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const t = params.get('territorio');
+    setFocusZoneName(t);
+  }, [location.search]);
 
   // Calculate polygons for clusters
   useEffect(() => {
@@ -34,7 +42,7 @@ const MapPage = () => {
       return;
     }
 
-    const clusters = findClusters(markers, 5); // 5km max distance
+    const clusters = findClusters(markers, 0.4); // 5km max distance
     const newPolygons = clusters.map(cluster => {
       const hull = getConvexHull(cluster);
       return hull.map(p => [p.latitude, p.longitude]);
@@ -61,7 +69,7 @@ const MapPage = () => {
         expiredMarkers.forEach(marker => {
           toast({
             title: "Marcador Expirado",
-            description: `El marcador "${marker.name}" ha sido eliminado automáticamente.`,
+            description: `El marcador "${marker.name}" ha sido eliminado automÃ¡ticamente.`,
             className: "bg-amber-50 border-amber-200 text-amber-900",
           });
         });
@@ -122,6 +130,17 @@ const MapPage = () => {
     });
   };
 
+  const clearAllMarkers = () => {
+    if (!window.confirm('¿Eliminar todos los marcadores?')) return;
+    setMarkers([]);
+    localStorage.removeItem('mapMarkers');
+    toast({
+      title: 'Marcadores limpiados',
+      description: 'Se han eliminado todos los marcadores.',
+      className: 'bg-red-50 border-red-200 text-red-900',
+    });
+  };
+
   const editMarker = (marker) => {
     setEditingMarker(marker);
     setSelectedLocation({ latitude: marker.latitude, longitude: marker.longitude });
@@ -179,7 +198,7 @@ const MapPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50">
+    <div className="min-h-screen bg-[#f5f5f0]">
       <Navbar />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -191,15 +210,22 @@ const MapPage = () => {
               onCancelMarker={cancelMarkerRef}
               tempIcon={tempIcon}
               onUpdateTempIcon={updateTempIconRef}
+              focusZoneName={focusZoneName}
             />
 
-            <div className="bg-white/80 backdrop-blur-sm rounded-xl p-6 border border-emerald-100 shadow-lg shadow-emerald-900/5">
+            <div className="bg-white rounded-xl p-6 border border-[#e5ce8c] shadow-md">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-emerald-900 flex items-center gap-2">
-                  <MapPin className="w-5 h-5 text-emerald-500" />
+                <h2 className="text-xl font-bold text-[#006b6e] uppercase tracking-wide flex items-center gap-2">
+                  <MapPin className="w-5 h-5 text-[#009b9f]" />
                   Marcadores Activos
                 </h2>
-
+                <button
+                  onClick={clearAllMarkers}
+                  className="px-3 py-1.5 bg-red-500 text-white rounded hover:bg-red-600 text-xs font-semibold"
+                  title="Eliminar todos los marcadores"
+                >
+                  Limpiar todo
+                </button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {markers.map((marker) => (
@@ -208,7 +234,7 @@ const MapPage = () => {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.9 }}
-                    className="p-4 rounded-lg bg-emerald-50/50 border border-emerald-100 hover:border-emerald-300 transition-colors relative group"
+                    className="p-4 rounded-lg bg-white border border-[#e5ce8c] hover:border-[#009b9f] transition-colors relative group"
                   >
                     <div className="absolute top-2 right-2 flex gap-1">
                       <button
@@ -232,7 +258,7 @@ const MapPage = () => {
                       ) : (
                         <span className="text-2xl">{marker.icon}</span>
                       )}
-                      <h3 className="font-medium text-emerald-900 pr-16">{marker.name}</h3>
+                      <h3 className="font-medium text-black pr-16">{marker.name}</h3>
                     </div>
                     <p className="text-sm text-slate-600 line-clamp-2">{marker.description}</p>
                     {marker.expirationTimestamp && (
@@ -255,7 +281,7 @@ const MapPage = () => {
           <div className="lg:col-span-1">
             <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="sticky top-24">
               {showForm ? (
-                <div className="bg-white/80 backdrop-blur-sm rounded-xl p-6 border border-emerald-100 shadow-xl shadow-emerald-900/5">
+                <div className="bg-white rounded-xl p-6 border border-[#e5ce8c] shadow-md">
                   <MarkerForm
                     onSubmit={addMarker}
                     onCancel={handleCancel}
@@ -266,14 +292,14 @@ const MapPage = () => {
                   />
                 </div>
               ) : (
-                <div className="bg-gradient-to-br from-emerald-500 to-cyan-600 rounded-xl p-8 text-white shadow-xl shadow-emerald-500/20 text-center">
-                  <h3 className="text-2xl font-bold mb-4">Explora la Región</h3>
-                  <p className="text-emerald-50 mb-6">
-                    Descubre joyas ocultas, sitios históricos y hermosos paisajes en la región de Valparaíso.
+                <div className="bg-white rounded-xl p-8 text-center border border-[#e5ce8c] shadow-md">
+                  <h3 className="text-2xl font-bold mb-4 text-[#006b6e] uppercase tracking-wide">Explora la Region</h3>
+                  <p className="text-slate-700 mb-6">
+                    Mapa Interactivo de Valparaiso.
                   </p>
                   <Button
                     variant="secondary"
-                    className="bg-white text-emerald-600 hover:bg-emerald-50 border-0 w-full"
+                    className="bg-[#009b9f] text-white hover:bg-[#008387] border-0 w-full"
                     onClick={() => setShowForm(true)}
                   >
                     Comenzar a Mapear

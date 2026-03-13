@@ -16,38 +16,21 @@ const deg2rad = (deg) => {
     return deg * (Math.PI / 180);
 };
 
-// Group markers into clusters based on maxDistance
+// Group markers into clusters based on a strict radius around each seed (in km)
+// This avoids the "chain effect" where BFS can connect points far apart via intermediate hops.
 export const findClusters = (markers, maxDistance) => {
     const clusters = [];
-    const visited = new Set();
+    const claimed = new Set();
 
-    markers.forEach((marker) => {
-        if (visited.has(marker.id)) return;
+    markers.forEach((seed) => {
+        if (claimed.has(seed.id)) return;
 
-        const cluster = [marker];
-        visited.add(marker.id);
-        const queue = [marker];
+        // Take all points within maxDistance of the seed (seed-centered radius)
+        const cluster = markers.filter((m) =>
+            calculateDistance(seed.latitude, seed.longitude, m.latitude, m.longitude) <= maxDistance
+        );
 
-        while (queue.length > 0) {
-            const current = queue.shift();
-
-            markers.forEach((other) => {
-                if (!visited.has(other.id)) {
-                    const dist = calculateDistance(
-                        current.latitude,
-                        current.longitude,
-                        other.latitude,
-                        other.longitude
-                    );
-
-                    if (dist <= maxDistance) {
-                        visited.add(other.id);
-                        cluster.push(other);
-                        queue.push(other);
-                    }
-                }
-            });
-        }
+        cluster.forEach((m) => claimed.add(m.id));
 
         if (cluster.length >= 3) {
             clusters.push(cluster);

@@ -1,27 +1,38 @@
 import React from 'react';
 import Navbar from './Navbar';
 import { Link } from 'react-router-dom';
+import bannerImage from '../assets/Fondo.jpg';
+import overlayImage from '../assets/text-overlay.svg';
+import brandLogo from '../assets/Nuestra QUinta Costa.png';
+import { Bold } from 'lucide-react';
 
 const HomePage = () => {
     return (
-        <div className="min-h-screen bg-[#f5f5f0]">
+        <div className="h-screen overflow-hidden bg-[#f5f5f0]">
             <Navbar />
-
+            <style>{`@import url('https://fonts.googleapis.com/css2?family=Pacifico&display=swap');`}</style>
             {/* Banner Section */}
-            <div className="relative w-full h-[300px] md:h-[400px]">
-                {/* Blue Placeholder for Banner Image */}
+            <div className="relative w-full h-[100px] md:h-[240px]">
+                {/* Banner Image */}
                 <div
-                    style={{ backgroundColor: '#0066cc', width: '100%', height: '100%' }}
+                    style={{
+                        backgroundImage: `url(${bannerImage})`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                        backgroundRepeat: 'no-repeat',
+                        width: '100%',
+                        height: '100%'
+                    }}
                     className="flex items-center justify-center relative"
                 >
-                    {/* REEMPLAZAR POR background-image: url(...) */}
-                    <span className="text-white opacity-50 font-mono text-sm">Banner Image Placeholder</span>
 
-                    {/* Text Overlay */}
+                    {/* Image Overlay */}
                     <div className="absolute inset-0 flex items-center justify-center p-4">
-                        <h2 className="text-4xl md:text-6xl font-script text-white text-center drop-shadow-md" style={{ fontFamily: 'cursive' }}>
-                            Conserva las prácticas ancestrales que respetan el equilibrio biocultural
-                        </h2>
+                        <img 
+                            src={overlayImage} 
+                            alt="Overlay image" 
+                            className="max-w-full max-h-full object-contain"
+                        />
                     </div>
                 </div>
             </div>
@@ -31,12 +42,12 @@ const HomePage = () => {
                 {/* Torn paper effect top (simulated with SVG or CSS, for now just a border) */}
                 <div className="h-4 bg-[#f5f5f0] w-full transform -skew-y-1"></div>
 
-                <div className="max-w-7xl mx-auto px-4 py-16 md:py-24">
-                    <div className="grid md:grid-cols-2 gap-12 items-start">
+                <div className="max-w-7xl mx-auto pl-4 pr-0 md:pr-0 pt-3 md:pt-3 pb-4">
+                    <div className="grid md:grid-cols-12 gap-4 items-start">
 
                         {/* Left Column: Text */}
-                        <div className="space-y-6">
-                            <h3 className="text-3xl font-bold text-[#006b6e] uppercase tracking-wide border-l-4 border-[#006b6e] pl-4">
+                        <div className="space-y-6 md:col-span-5 lg:col-span-5 xl:col-span-5">
+                            <h3 className="text-5xl text-[#006b6e] tracking-wide border-l-4 border-[#006b6e] pl-4" style={{ fontFamily: "'Amatic', cursive", fontWeight: 'bold' }}>
                                 Sobre Quinta Costa
                             </h3>
                             <p className="text-slate-700 leading-relaxed text-lg text-justify">
@@ -53,25 +64,21 @@ const HomePage = () => {
                         </div>
 
                         {/* Right Column: Logo/Image */}
-                        <div className="flex justify-center md:justify-end">
-                            {/* Blue Placeholder for Logo/Image */}
-                            <div
-                                style={{ backgroundColor: '#0066cc', width: '400px', height: '300px' }}
-                                className="flex items-center justify-center"
-                            >
-                                {/* REEMPLAZAR POR background-image: url(...) */}
-                                <span className="text-white opacity-50 font-mono text-sm text-center px-4">
-                                    Logo/Image Placeholder<br />(Nuestra Quinta Costa Logo)
-                                </span>
+                        <div className="flex justify-center md:justify-start md:col-span-7 lg:col-span-7 xl:col-span-7">
+                            {/* Wrapper to anchor vignette to the photo block */}
+                            <div className="relative block w-full md:-ml-4 lg:-ml-6 md:-mr-[calc(50vw-50%)] lg:-mr-[calc(50vw-50%)] xl:-mr-[calc(50vw-50%)]">
+                                {/* Lateral Vignette Decoration */}
+                                {/* Right visual block with background photo and logo overlay (no solid square) */}
+                                <img
+                                    src={brandLogo}
+                                    alt="Nuestra Quinta Costa"
+                                    className="relative z-10 block w-full md:w-[112%] h-auto mt-[-8px] md:mt-[30px] translate-x-[200px] md:mb-[-6px] -rotate-[1.1deg] scale-130"
+                                />
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-
-            <footer className="bg-[#333] text-white py-8 text-center">
-                <p>© 2025 Nuestra Quinta Costa</p>
-            </footer>
         </div>
     );
 };
