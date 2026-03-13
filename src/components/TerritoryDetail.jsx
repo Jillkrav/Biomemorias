@@ -2,10 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import Navbar from './Navbar';
 
-import cerroEsperanzaHero from '@/assets/cerros/Cerro esperanza/Cerro Esperanza.jpg';
-import cerroEsperanzaAlt1 from '@/assets/cerros/Cerro esperanza/D_NQ_NP_2X_994969-MLC89050195320_082025-F-terreno-cerro-esperanza-valparaiso.jpg';
-import cerroMariposaHero from '@/assets/cerros/Cerro mariposa/maripo00.jpg';
-import cerroMariposaAlt1 from '@/assets/cerros/Cerro mariposa/winebox.jpg';
+import cerroEsperanzaHero from '@/assets/Cerros/Cerro esperanza/Cerro Esperanza.jpg';
+import cerroEsperanzaAlt1 from '@/assets/Cerros/Cerro esperanza/D_NQ_NP_2X_994969-MLC89050195320_082025-F-terreno-cerro-esperanza-valparaiso.jpg';
+import cerroMariposaHero from '@/assets/Cerros/Cerro mariposa/maripo00.jpg';
+import cerroMariposaAlt1 from '@/assets/Cerros/Cerro mariposa/winebox.jpg';
 
 const TERRITORIES = [
   { id: 1, name: 'Esperanza', icon: '🌅', description: 'Sector de esperanza y renovación costera' },
