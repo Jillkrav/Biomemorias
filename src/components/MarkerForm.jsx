@@ -8,36 +8,55 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
 
-// Import icon images
-const icon1 = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/icono%20(1).jpg";
-const icon2 = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/icono%20(2).jpg";
-const icon3 = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/icono%20(3).jpg";
-const icon4 = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/icono%20(4).jpg";
-const icon5 = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/icono%20(5).jpg";
-const icon6 = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/icono%20(6).jpg";
-const icon7 = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/icono%20(7).jpg";
-const icon8 = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/icono%20(8).jpg";
-const icon9 = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/icono%20(9).jpg";
-const icon10 = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/icono%20(10).jpg";
-
-// Array de iconos disponibles para los marcadores
-const icons = [
-    icon1, icon2, icon3, icon4, icon5,
-    icon6, icon7, icon8, icon9, icon10
-];
-
 const MarkerForm = ({ onSubmit, onCancel, initialData, editingMarker, tempIcon, onIconChange }) => {
+    const [icons, setIcons] = useState([]);
     const [formData, setFormData] = useState({
         name: '',
         description: '',
         latitude: '',
         longitude: '',
-        icon: icon1,
+        icon: '',
         hasExpiration: false,
         expirationDate: '',
         expirationTime: ''
     });
     const { toast } = useToast();
+
+    const GITHUB_API_URL = 'https://api.github.com/repos/Jillkrav/Biomemorias/contents/src/assets/Iconos%20mapa';
+    const GITHUB_RAW_BASE = 'https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/Iconos%20mapa/';
+
+    // Efecto para cargar iconos dinámicamente desde GitHub
+    useEffect(() => {
+        const fetchIcons = async () => {
+            try {
+                const response = await fetch(GITHUB_API_URL);
+                const data = await response.json();
+                
+                if (Array.isArray(data)) {
+                    const iconList = data
+                        .filter(file => file.name.match(/\.(jpg|jpeg|png|svg|webp)$/i))
+                        .map(file => `${GITHUB_RAW_BASE}${encodeURIComponent(file.name)}`)
+                        .sort((a, b) => {
+                            const aNum = parseInt(a.match(/\d+/));
+                            const bNum = parseInt(b.match(/\d+/));
+                            if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
+                            return a.localeCompare(b);
+                        });
+                    
+                    setIcons(iconList);
+                    
+                    // Si no hay icono seleccionado y tenemos iconos, seleccionar el primero por defecto
+                    if (!formData.icon && iconList.length > 0) {
+                        setFormData(prev => ({ ...prev, icon: iconList[0] }));
+                    }
+                }
+            } catch (error) {
+                console.error("Error fetching icons from GitHub:", error);
+            }
+        };
+
+        fetchIcons();
+    }, []);
 
     // Efecto para inicializar el formulario cuando se edita un marcador o se selecciona una ubicación
     useEffect(() => {

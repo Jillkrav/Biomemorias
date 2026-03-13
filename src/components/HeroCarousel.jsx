@@ -6,10 +6,27 @@ const HeroCarousel = ({ title }) => {
   const [banners, setBanners] = useState([]);
 
   useEffect(() => {
-    // In Vite, we can use import.meta.glob to get all images from a directory
-    const images = import.meta.glob('../assets/Carrusel/*.{png,jpg,jpeg,svg,webp}', { eager: true });
-    const imageUrls = Object.values(images).map(mod => mod.default || mod);
-    setBanners(imageUrls);
+    // Carga dinámica de imágenes desde GitHub API
+    const GITHUB_API_URL = 'https://api.github.com/repos/Jillkrav/Biomemorias/contents/src/assets/Carrusel';
+    const GITHUB_RAW_BASE = 'https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/Carrusel/';
+
+    const fetchImages = async () => {
+      try {
+        const response = await fetch(GITHUB_API_URL);
+        const data = await response.json();
+        
+        if (Array.isArray(data)) {
+          const imageUrls = data
+            .filter(file => file.name.match(/\.(jpg|jpeg|png|svg|webp)$/i))
+            .map(file => `${GITHUB_RAW_BASE}${encodeURIComponent(file.name)}`);
+          setBanners(imageUrls);
+        }
+      } catch (error) {
+        console.error("Error fetching carousel images from GitHub:", error);
+      }
+    };
+
+    fetchImages();
   }, []);
 
   const next = () => setIndex((i) => (i + 1) % banners.length);

@@ -1,17 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import Navbar from './Navbar';
 
-// Carga dinámica de todas las imágenes de exposición
-const ALL_EXPO_IMAGES = import.meta.glob('../assets/cerros/*/Fotos/Exposicion/*.{jpg,jpeg,png,webp,gif}', { eager: true, import: 'default' });
-
-// Carga dinámica de archivos no-JS (audios, documentos, videos, etc.)
-// Usamos query string ?url para que Vite los trate como assets estáticos y no intente parsearlos como JS
-const ALL_CERRO_ASSETS = import.meta.glob('../assets/cerros/**/*.*', { 
-  eager: true, 
-  import: 'default',
-  query: '?url' 
-});
 
 const TERRITORIES = [
   { id: 1, name: 'Esperanza', icon: '🌅', description: 'Sector de esperanza y renovación costera' },
@@ -31,6 +21,7 @@ const TERRITORIES = [
 ];
 
 function slugify(str) {
+  if (!str) return '';
   return str
     .toString()
     .normalize('NFD')
@@ -48,65 +39,9 @@ const DEFAULT_MEDIA = {
   thumbs: []
 };
 
-function getTerritoryMedia(slug) {
-  const territoryImages = Object.entries(ALL_EXPO_IMAGES)
-    .filter(([path]) => {
-      const parts = path.split('/');
-      const cerroDir = parts[3];
-      if (!cerroDir) return false;
-      const cererDirSlug = slugify(cerroDir);
-      const targetSlug = slugify(slug);
-      return cererDirSlug.includes(targetSlug) || targetSlug.includes(cererDirSlug);
-    })
-    .map(([_, src]) => src);
-
-  if (territoryImages.length === 0) return DEFAULT_MEDIA;
-
-  return {
-    hero: {
-      src: territoryImages[0],
-      alt: `Vista de ${slug}`
-    },
-    thumbs: territoryImages.slice(1).map((src, idx) => ({
-      src,
-      alt: `Imagen ${idx + 2} de ${slug}`
-    }))
-  };
-}
-
-function getFolderContent(slug, folderName) {
-  // Estructura para agrupar por subcarpetas
-  const grouped = {};
-
-  Object.entries(ALL_CERRO_ASSETS).forEach(([path, src]) => {
-    const parts = path.split('/');
-    const cerroDir = parts[3];
-    const category = parts[4]; // Audio, Documentos, Fotos, Videos
-    if (!cerroDir || !category) return;
-
-    const cerroDirSlug = slugify(cerroDir);
-    const targetSlug = slugify(slug);
-
-    const matchCerro = cerroDirSlug.includes(targetSlug) || targetSlug.includes(cerroDirSlug);
-    const matchCategory = category.toLowerCase() === folderName.toLowerCase();
-
-    if (matchCerro && matchCategory) {
-      // Determinar si hay subcarpetas después de la categoría
-      // Ejemplo: ../assets/cerros/Cerro esperanza/Fotos/SubCarpeta/imagen.jpg
-      // parts[0]="..", [1]="assets", [2]="cerros", [3]="Cerro esperanza", [4]="Fotos", [5]="SubCarpeta", [6]="imagen.jpg"
-      const subPathParts = parts.slice(5, -1);
-      const subFolder = subPathParts.length > 0 ? subPathParts.join(' / ') : 'Principal';
-      const fileName = parts[parts.length - 1].split('?')[0];
-
-      if (!grouped[subFolder]) {
-        grouped[subFolder] = [];
-      }
-      grouped[subFolder].push({ path, src, fileName });
-    }
-  });
-
-  return grouped;
-}
+const GITHUB_REPO = 'Jillkrav/Biomemorias';
+const GITHUB_BRANCH = 'main';
+const GITHUB_API_BASE = `https://api.github.com/repos/${GITHUB_REPO}/contents/src/assets/Cerros`;
 
 export default function TerritoryDetail() {
   const navigate = useNavigate();
@@ -117,13 +52,130 @@ export default function TerritoryDetail() {
   const [isLoadingMarkers, setIsLoadingMarkers] = useState(false);
   const [zones, setZones] = useState([]);
   const [openProblemas, setOpenProblemas] = useState(false);
-  const [selectedFolder, setSelectedFolder] = useState(null); // 'Audio', 'Documentos', 'Fotos', 'Videos'
-  const [currentSubPath, setCurrentSubPath] = useState([]); // Array de strings representando la profundidad
+  const [selectedFolder, setSelectedFolder] = useState(null); 
+  const [currentSubPath, setCurrentSubPath] = useState([]);
+  
+  // Estado para todos los assets del cerro actual
+  const [allAssets, setAllAssets] = useState([]);
+  const [isLoadingAssets, setIsLoadingAssets] = useState(false);
 
+  // Función recursiva para obtener archivos de GitHub
+  const fetchGitHubDirectory = useCallback(async (path) => {
+    try {
+      const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${path}`);
+      const data = await response.json();
+      
+      if (!Array.isArray(data)) return [];
+
+      let files = [];
+      for (const item of data) {
+        if (item.type === 'dir') {
+          const subFiles = await fetchGitHubDirectory(item.path);
+          files = [...files, ...subFiles];
+        } else {
+          files.push({
+            path: item.path,
+            src: item.download_url,
+            fileName: item.name
+          });
+        }
+      }
+      return files;
+    } catch (error) {
+      console.error(`Error fetching directory ${path}:`, error);
+      return [];
+    }
+  }, []);
+
+  // Cargar assets cuando cambia el territorio
+  useEffect(() => {
+    if (!territory) return;
+
+    const loadAssets = async () => {
+      setIsLoadingAssets(true);
+      try {
+        // Listamos el directorio raíz de cerros para encontrar la carpeta correcta
+        const response = await fetch(GITHUB_API_BASE);
+        const cerros = await response.json();
+        
+        if (!Array.isArray(cerros)) {
+          throw new Error("GitHub API did not return an array of folders");
+        }
+
+        // Buscamos una carpeta que contenga el nombre del cerro (ignorando mayúsculas/minúsculas)
+        const targetName = territory.name.toLowerCase();
+        const targetCerro = cerros.find(c => {
+          const folderName = c.name.toLowerCase();
+          return folderName.includes(targetName) || targetName.includes(folderName);
+        });
+        
+        if (targetCerro) {
+          const files = await fetchGitHubDirectory(targetCerro.path);
+          setAllAssets(files);
+        } else {
+          setAllAssets([]);
+        }
+      } catch (error) {
+        console.error("Error loading cerro assets from GitHub:", error);
+        setAllAssets([]);
+      } finally {
+        setIsLoadingAssets(false);
+      }
+    };
+
+    loadAssets();
+  }, [slug, territory, fetchGitHubDirectory]);
+
+  // Lógica para media (exposición)
+  const media = useMemo(() => {
+    if (!slug || allAssets.length === 0) return DEFAULT_MEDIA;
+
+    const expoImages = allAssets.filter(asset => 
+      asset.path.toLowerCase().includes('/fotos/exposicion/') && 
+      asset.fileName.match(/\.(jpg|jpeg|png|webp|gif)$/i)
+    ).map(a => a.src);
+
+    if (expoImages.length === 0) return DEFAULT_MEDIA;
+
+    return {
+      hero: { src: expoImages[0], alt: `Vista de ${slug}` },
+      thumbs: expoImages.slice(1).map((src, idx) => ({
+        src,
+        alt: `Imagen ${idx + 2} de ${slug}`
+      }))
+    };
+  }, [slug, allAssets]);
+
+  // Lógica para agrupar archivos por carpeta (Fotos, Audio, etc.)
   const folderGroups = useMemo(() => {
-    if (!slug || !selectedFolder) return {};
-    return getFolderContent(slug, selectedFolder);
-  }, [slug, selectedFolder]);
+    if (!slug || !selectedFolder || allAssets.length === 0) return {};
+    
+    const grouped = {};
+    const lowerFolder = selectedFolder.toLowerCase();
+
+    allAssets.forEach(asset => {
+      // Path from API is like: "src/assets/Cerros/Cerro esperanza/Fotos/Subfolder/file.jpg"
+      const parts = asset.path.split('/');
+      
+      // La categoría (Fotos, Audio, etc.) está después de la carpeta del cerro
+      // Buscamos el índice donde está "Cerros" y sumamos 2 para llegar a la categoría
+      const cerrosIdx = parts.findIndex(p => p.toLowerCase() === 'cerros');
+      if (cerrosIdx === -1 || parts.length <= cerrosIdx + 2) return;
+      
+      const category = parts[cerrosIdx + 2];
+      
+      if (!category || category.toLowerCase() !== lowerFolder) return;
+
+      // Todo lo que esté después de la categoría y antes del nombre del archivo es una subcarpeta
+      const subPathParts = parts.slice(cerrosIdx + 3, -1);
+      const subFolder = subPathParts.length > 0 ? subPathParts.join(' / ') : 'Principal';
+
+      if (!grouped[subFolder]) grouped[subFolder] = [];
+      grouped[subFolder].push(asset);
+    });
+
+    return grouped;
+  }, [slug, selectedFolder, allAssets]);
 
   // Obtener el contenido del nivel actual basado en currentSubPath
   const currentView = useMemo(() => {
@@ -285,11 +337,6 @@ export default function TerritoryDetail() {
   }, [markersWithCoords, zoneForTerritory]);
 
   const mapHref = `/mapa2?zonaId=${encodeURIComponent(String(territory.id))}`;
-
-  const media = useMemo(() => {
-    if (!slug) return DEFAULT_MEDIA;
-    return getTerritoryMedia(slug);
-  }, [slug]);
 
   const remainingPhotosCount = media.thumbs.length > 2 ? media.thumbs.length - 2 : 0;
 

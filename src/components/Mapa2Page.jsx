@@ -6,8 +6,6 @@ import 'leaflet/dist/leaflet.css';
 import { motion } from 'framer-motion';
 import { MapPin } from 'lucide-react';
 
-const ICON_FILES = import.meta.glob('../assets/Iconos mapa/*.jpg', { eager: true, import: 'default' });
-
 const CATEGORIAS = [
   'Seguridad, violencia y crimen',
   'Infraestructura urbana y conectividad',
@@ -38,6 +36,34 @@ const TERRITORIES = [
 
 const Mapa2Page = () => {
   const location = useLocation();
+  const [iconFiles, setIconFiles] = useState({});
+  const GITHUB_API_URL = 'https://api.github.com/repos/Jillkrav/Biomemorias/contents/src/assets/Iconos%20mapa';
+  const GITHUB_RAW_BASE = 'https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/Iconos%20mapa/';
+
+  useEffect(() => {
+    const fetchIcons = async () => {
+      try {
+        const response = await fetch(GITHUB_API_URL);
+        const data = await response.json();
+        
+        if (Array.isArray(data)) {
+          const mapping = {};
+          data.forEach(file => {
+            if (file.name.match(/\.(jpg|jpeg|png|svg|webp)$/i)) {
+              // Mapeamos el nombre que espera el código a la URL raw de GitHub
+              const localPath = `../assets/Iconos mapa/${file.name}`;
+              mapping[localPath] = `${GITHUB_RAW_BASE}${encodeURIComponent(file.name)}`;
+            }
+          });
+          setIconFiles(mapping);
+        }
+      } catch (error) {
+        console.error("Error fetching icons from GitHub:", error);
+      }
+    };
+
+    fetchIcons();
+  }, []);
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersLayerRef = useRef(null);
@@ -227,14 +253,20 @@ const Mapa2Page = () => {
   };
 
   const iconOptions = useMemo(() => {
-    return Object.entries(ICON_FILES)
+    return Object.entries(iconFiles)
       .map(([p, url]) => ({
         file: String(p).split(/[\\/]/).pop(),
         url
       }))
       .filter((x) => x.file && x.url)
-      .sort((a, b) => String(a.file).localeCompare(String(b.file)));
-  }, []);
+      .sort((a, b) => {
+        // Sort numerically if possible (e.g., icono (1).jpg)
+        const aNum = parseInt(a.file.match(/\d+/));
+        const bNum = parseInt(b.file.match(/\d+/));
+        if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
+        return String(a.file).localeCompare(String(b.file));
+      });
+  }, [iconFiles]);
 
   const iconUrlByFile = useMemo(() => {
     const m = {};

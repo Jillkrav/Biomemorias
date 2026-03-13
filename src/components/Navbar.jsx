@@ -17,7 +17,7 @@ const Navbar = () => {
                     {/* Logo Area (Left) */}
                     <Link to="/" className="flex items-center px-4 h-14 md:h-16 bg-transparent flex-shrink-0 overflow-hidden md:self-start">
                         <img 
-                            src="/src/assets/logotipo nuestra quinta costa.png" 
+                            src="https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/logotipo nuestra quinta costa.png" 
                             alt="Nuestra Quinta Costa" 
                             className="h-9 md:h-11 w-auto object-contain"
                         />
