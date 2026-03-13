@@ -11,7 +11,7 @@ function AdminLocalizaciones() {
   const [authorized, setAuthorized] = useState(false);
   const [keyInput, setKeyInput] = useState('');
   const [searchParams] = useSearchParams();
-  const requiredKey = useMemo(() => (import.meta.env?.VITE_ADMIN_KEY || 'quintacosta'), []);
+  const requiredKey = useMemo(() => (import.meta.env.VITE_ADMIN_KEY || 'quintacosta'), []);
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
