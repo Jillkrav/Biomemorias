@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from './Navbar';
+import HeroCarousel from './HeroCarousel';
 import { AlertCircle, Building, Home, Droplet, Flame, Heart, Users, Landmark } from 'lucide-react';
 
 const ProblematicasPage = () => {
@@ -341,15 +342,10 @@ const ProblematicasPage = () => {
     return (
         <div className="min-h-screen bg-[#f5f5f0]">
             <Navbar />
+            <style>{`@import url('https://fonts.googleapis.com/css2?family=Pacifico&display=swap');`}</style>
 
             {/* Header Section */}
-            <div className="relative w-full h-[200px] bg-gradient-to-r from-[#006b6e] to-[#008f91]">
-                <div className="absolute inset-0 flex items-center justify-center">
-                    <h1 className="text-4xl md:text-5xl font-bold text-white text-center">
-                        Problemáticas Territoriales
-                    </h1>
-                </div>
-            </div>
+            <HeroCarousel title="Problemáticas Territoriales" />
 
             {/* Main Content */}
             <div className="max-w-6xl mx-auto px-4 py-12">

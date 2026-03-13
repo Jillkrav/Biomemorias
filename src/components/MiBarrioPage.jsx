@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Navbar from './Navbar';
+import HeroCarousel from './HeroCarousel';
 import { motion } from 'framer-motion';
 import { ChevronDown, Waves, Mountain, Building } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -84,20 +85,10 @@ const MiBarrioPage = () => {
     return (
         <div className="min-h-screen bg-[#F4E9DC]">
             <Navbar />
+            <style>{`@import url('https://fonts.googleapis.com/css2?family=Pacifico&display=swap');`}</style>
 
             {/* Header Section */}
-            <div className="relative w-full h-[250px] md:h-[300px] bg-gradient-to-r from-[#005f73] to-[#2a9d8f]">
-                <div className="absolute inset-0 flex items-center justify-center p-4">
-                    <div className="text-center">
-                        <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
-                            Mi Barrio
-                        </h1>
-                        <p className="text-xl text-white/90 max-w-2xl mx-auto">
-                            Explora los territorios que conforman nuestra Quinta Costa
-                        </p>
-                    </div>
-                </div>
-            </div>
+            <HeroCarousel title="Mi Barrio" />
 
             {/* Main Content */}
             <div className="max-w-7xl mx-auto px-4 py-12">

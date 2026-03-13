@@ -9,16 +9,16 @@ import { useToast } from '@/components/ui/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
 
 // Import icon images
-import icon1 from '@/assets/icono (1).jpg';
-import icon2 from '@/assets/icono (2).jpg';
-import icon3 from '@/assets/icono (3).jpg';
-import icon4 from '@/assets/icono (4).jpg';
-import icon5 from '@/assets/icono (5).jpg';
-import icon6 from '@/assets/icono (6).jpg';
-import icon7 from '@/assets/icono (7).jpg';
-import icon8 from '@/assets/icono (8).jpg';
-import icon9 from '@/assets/icono (9).jpg';
-import icon10 from '@/assets/icono (10).jpg';
+const icon1 = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/icono%20(1).jpg";
+const icon2 = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/icono%20(2).jpg";
+const icon3 = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/icono%20(3).jpg";
+const icon4 = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/icono%20(4).jpg";
+const icon5 = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/icono%20(5).jpg";
+const icon6 = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/icono%20(6).jpg";
+const icon7 = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/icono%20(7).jpg";
+const icon8 = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/icono%20(8).jpg";
+const icon9 = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/icono%20(9).jpg";
+const icon10 = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/icono%20(10).jpg";
 
 // Array de iconos disponibles para los marcadores
 const icons = [

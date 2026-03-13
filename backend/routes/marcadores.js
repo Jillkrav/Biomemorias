@@ -1,172 +1,37 @@
 import express from 'express';
-import db from '../db.js';
+import { Marcador } from '../mongodb.js';
 
 const router = express.Router();
 
-function round2(n) {
-  return Math.round(Number(n) * 100) / 100;
-}
+router.get('/', async (req, res) => {
+  const now = Date.now();
+  try {
+    // Delete expired markers
+    await Marcador.deleteMany({ ExpiraEn: { $ne: null, $lte: now } });
 
-function ensureMarcadoresTableWithIcono(cb) {
-  db.run(
-    `CREATE TABLE IF NOT EXISTS marcadores (
-      ID_marcador INTEGER PRIMARY KEY AUTOINCREMENT,
-      Nombre TEXT NOT NULL,
-      Descripcion TEXT,
-      Coordenadas TEXT NOT NULL,
-      Icono TEXT,
-      ExpiraEn INTEGER,
-      Categoria TEXT
-    )`,
-    cb
-  );
-}
+    // Find active markers
+    const rows = await Marcador.find({
+      $or: [{ ExpiraEn: null }, { ExpiraEn: { $gt: now } }]
+    }).sort({ _id: -1 });
 
-function ensureIconoColumn(cb) {
-  db.run('ALTER TABLE marcadores ADD COLUMN Icono TEXT', (err) => {
-    const msg = String(err && err.message ? err.message : err);
-    if (err && !msg.includes('duplicate column') && !msg.includes('already exists')) {
-      return cb(err);
-    }
-    return cb(null);
-  });
-}
+    const result = rows.map((r) => ({
+      id_marcador: r._id,
+      nombre: r.Nombre,
+      descripcion: r.Descripcion,
+      coordenadas: r.Coordenadas,
+      icono: r.Icono ? String(r.Icono).trim() : null,
+      expira_en: typeof r.ExpiraEn === 'number' ? r.ExpiraEn : null,
+      categoria: r.Categoria ? String(r.Categoria).trim() : null
+    }));
 
-function ensureExpiraEnColumn(cb) {
-  db.run('ALTER TABLE marcadores ADD COLUMN ExpiraEn INTEGER', (err) => {
-    const msg = String(err && err.message ? err.message : err);
-    if (err && !msg.includes('duplicate column') && !msg.includes('already exists')) {
-      return cb(err);
-    }
-    return cb(null);
-  });
-}
-
-function ensureCategoriaColumn(cb) {
-  db.run('ALTER TABLE marcadores ADD COLUMN Categoria TEXT', (err) => {
-    const msg = String(err && err.message ? err.message : err);
-    if (err && !msg.includes('duplicate column') && !msg.includes('already exists')) {
-      return cb(err);
-    }
-    return cb(null);
-  });
-}
-
-function shouldMigrateIconoColumn(err) {
-  const msg = String(err && err.message ? err.message : err);
-  const m = msg.toLowerCase();
-  const missingColumn =
-    m.includes('no such column') ||
-    m.includes('has no column named') ||
-    m.includes('no column named');
-  return missingColumn && m.includes('icono');
-}
-
-function shouldMigrateExpiraEnColumn(err) {
-  const msg = String(err && err.message ? err.message : err);
-  const m = msg.toLowerCase();
-  const missingColumn =
-    m.includes('no such column') ||
-    m.includes('has no column named') ||
-    m.includes('no column named');
-  return missingColumn && (m.includes('expiraen') || m.includes('expira_en') || m.includes('expira en'));
-}
-
-function shouldMigrateCategoriaColumn(err) {
-  const msg = String(err && err.message ? err.message : err);
-  const m = msg.toLowerCase();
-  const missingColumn =
-    m.includes('no such column') ||
-    m.includes('has no column named') ||
-    m.includes('no column named');
-  return missingColumn && m.includes('categoria');
-}
-
-router.get('/', (req, res) => {
-  const runQuery = () => {
-    const now = Date.now();
-
-    db.run(
-      'DELETE FROM marcadores WHERE ExpiraEn IS NOT NULL AND ExpiraEn <= ?',
-      [now],
-      (deleteErr) => {
-        if (deleteErr) {
-          const msg = String(deleteErr && deleteErr.message ? deleteErr.message : deleteErr);
-          if (msg.includes('no such table: marcadores')) {
-            ensureMarcadoresTableWithIcono((createErr) => {
-              if (createErr) return res.status(500).json({ error: 'DB_ERROR' });
-              return res.json([]);
-            });
-            return;
-          }
-          if (shouldMigrateExpiraEnColumn(deleteErr)) {
-            ensureExpiraEnColumn((migErr) => {
-              if (migErr) return res.status(500).json({ error: 'DB_ERROR' });
-              return runQuery();
-            });
-            return;
-          }
-          return res.status(500).json({ error: 'DB_ERROR' });
-        }
-
-        db.all(
-          'SELECT ID_marcador, Nombre, Descripcion, Coordenadas, Icono, ExpiraEn, Categoria FROM marcadores WHERE ExpiraEn IS NULL OR ExpiraEn > ? ORDER BY ID_marcador DESC',
-          [now],
-          (err, rows) => {
-            if (err) {
-              const msg = String(err && err.message ? err.message : err);
-              if (msg.includes('no such table: marcadores')) {
-                ensureMarcadoresTableWithIcono((createErr) => {
-                  if (createErr) return res.status(500).json({ error: 'DB_ERROR' });
-                  return res.json([]);
-                });
-                return;
-              }
-              if (shouldMigrateIconoColumn(err)) {
-                ensureIconoColumn((migErr) => {
-                  if (migErr) return res.status(500).json({ error: 'DB_ERROR' });
-                  return runQuery();
-                });
-                return;
-              }
-              if (shouldMigrateExpiraEnColumn(err)) {
-                ensureExpiraEnColumn((migErr) => {
-                  if (migErr) return res.status(500).json({ error: 'DB_ERROR' });
-                  return runQuery();
-                });
-                return;
-              }
-              if (shouldMigrateCategoriaColumn(err)) {
-                ensureCategoriaColumn((migErr) => {
-                  if (migErr) return res.status(500).json({ error: 'DB_ERROR' });
-                  return runQuery();
-                });
-                return;
-              }
-              return res.status(500).json({ error: 'DB_ERROR' });
-            }
-
-            const result = rows.map((r) => ({
-              id_marcador: r.ID_marcador,
-              nombre: r.Nombre,
-              descripcion: r.Descripcion,
-              coordenadas: r.Coordenadas,
-              icono: r.Icono ? String(r.Icono).trim() : null,
-              expira_en: typeof r.ExpiraEn === 'number' ? r.ExpiraEn : null,
-              categoria: r.Categoria ? String(r.Categoria).trim() : null
-            }));
-
-            return res.json(result);
-          }
-        );
-      }
-    );
-  };
-
-  return runQuery();
+    res.json(result);
+  } catch (err) {
+    console.error('DB error on GET all:', err);
+    res.status(500).json({ error: 'DB_ERROR' });
+  }
 });
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const { nombre, descripcion, lat, lng, icono, duracionHoras, temporal, categoria } = req.body || {};
 
   if (!nombre || !String(nombre).trim()) {
@@ -199,95 +64,45 @@ router.post('/', (req, res) => {
     expiraEn = now + Math.round(hours * 60 * 60 * 1000);
   }
 
-  const runInsert = () => {
-    const stmt = db.prepare('INSERT INTO marcadores (Nombre, Descripcion, Coordenadas, Icono, ExpiraEn, Categoria) VALUES (?, ?, ?, ?, ?, ?)');
-    stmt.run(
-      String(nombre).trim(),
-      descripcion ? String(descripcion) : '',
-      coordStr,
-      icono ? String(icono).trim() : null,
-      expiraEn,
-      categoria ? String(categoria).trim() : null,
-      function (err) {
-        if (err) {
-          const msg = String(err && err.message ? err.message : err);
-          if (msg.includes('no such table: marcadores')) {
-            ensureMarcadoresTableWithIcono((createErr) => {
-              if (createErr) return res.status(500).json({ error: 'DB_ERROR' });
-              return runInsert();
-            });
-            return;
-          }
-          if (shouldMigrateIconoColumn(err)) {
-            ensureIconoColumn((migErr) => {
-              if (migErr) return res.status(500).json({ error: 'DB_ERROR' });
-              return runInsert();
-            });
-            return;
-          }
-          if (shouldMigrateExpiraEnColumn(err)) {
-            ensureExpiraEnColumn((migErr) => {
-              if (migErr) return res.status(500).json({ error: 'DB_ERROR' });
-              return runInsert();
-            });
-            return;
-          }
-          if (shouldMigrateCategoriaColumn(err)) {
-            ensureCategoriaColumn((migErr) => {
-              if (migErr) return res.status(500).json({ error: 'DB_ERROR' });
-              return runInsert();
-            });
-            return;
-          }
-          return res.status(500).json({ error: 'DB_ERROR' });
-        }
-
-        return res.status(201).json({
-          id_marcador: this.lastID,
-          nombre: String(nombre).trim(),
-          descripcion: descripcion ? String(descripcion) : '',
-          coordenadas: coordStr,
-          icono: icono ? String(icono).trim() : null,
-          expira_en: expiraEn,
-          categoria: categoria ? String(categoria).trim() : null
-        });
-      }
-    );
-    stmt.finalize();
-  };
-
-  runInsert();
-});
-
-router.delete('/:id', (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: 'ID_INVALIDO' });
-
-  const runDelete = () => {
-    db.run('DELETE FROM marcadores WHERE ID_marcador = ?', [id], function (err) {
-      if (err) {
-        const msg = String(err && err.message ? err.message : err);
-        if (msg.includes('no such table: marcadores')) {
-          ensureMarcadoresTableWithIcono((createErr) => {
-            if (createErr) return res.status(500).json({ error: 'DB_ERROR' });
-            return res.status(404).json({ error: 'NOT_FOUND' });
-          });
-          return;
-        }
-        return res.status(500).json({ error: 'DB_ERROR' });
-      }
-      if (!this.changes) return res.status(404).json({ error: 'NOT_FOUND' });
-      return res.status(204).send();
+  try {
+    const newMarcador = await Marcador.create({
+      Nombre: String(nombre).trim(),
+      Descripcion: descripcion ? String(descripcion) : '',
+      Coordenadas: coordStr,
+      Icono: icono ? String(icono).trim() : null,
+      ExpiraEn: expiraEn,
+      Categoria: categoria ? String(categoria).trim() : null
     });
-  };
 
-  runDelete();
+    res.status(201).json({
+      id_marcador: newMarcador._id,
+      nombre: newMarcador.Nombre,
+      descripcion: newMarcador.Descripcion,
+      coordenadas: newMarcador.Coordenadas,
+      icono: newMarcador.Icono,
+      expira_en: newMarcador.ExpiraEn,
+      categoria: newMarcador.Categoria
+    });
+  } catch (err) {
+    console.error('DB error on INSERT:', err);
+    res.status(500).json({ error: 'DB_ERROR' });
+  }
 });
 
-router.put('/:id', (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: 'ID_INVALIDO' });
+router.delete('/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const deleted = await Marcador.findByIdAndDelete(id);
+    if (!deleted) return res.status(404).json({ error: 'NOT_FOUND' });
+    res.status(204).send();
+  } catch (err) {
+    console.error('DB error on DELETE:', err);
+    res.status(500).json({ error: 'DB_ERROR' });
+  }
+});
 
+router.put('/:id', async (req, res) => {
+  const { id } = req.params;
   const { nombre, descripcion, icono, duracionHoras, temporal, categoria } = req.body || {};
   if (!nombre || !String(nombre).trim()) {
     return res.status(400).json({ error: 'NOMBRE_VACIO' });
@@ -312,57 +127,33 @@ router.put('/:id', (req, res) => {
     expiraEn = now + Math.round(hours * 60 * 60 * 1000);
   }
 
-  const runUpdate = () => {
-    db.run(
-      'UPDATE marcadores SET Nombre = ?, Descripcion = ?, Icono = ?, ExpiraEn = ?, Categoria = ? WHERE ID_marcador = ?',
-      [String(nombre).trim(), descripcion ? String(descripcion) : '', icono ? String(icono).trim() : null, expiraEn, categoria ? String(categoria).trim() : null, id],
-      function (err) {
-        if (err) {
-          const msg = String(err && err.message ? err.message : err);
-          if (msg.includes('no such table: marcadores')) {
-            ensureMarcadoresTableWithIcono((createErr) => {
-              if (createErr) return res.status(500).json({ error: 'DB_ERROR' });
-              return res.status(404).json({ error: 'NOT_FOUND' });
-            });
-            return;
-          }
-          if (shouldMigrateIconoColumn(err)) {
-            ensureIconoColumn((migErr) => {
-              if (migErr) return res.status(500).json({ error: 'DB_ERROR' });
-              return runUpdate();
-            });
-            return;
-          }
-          if (shouldMigrateExpiraEnColumn(err)) {
-            ensureExpiraEnColumn((migErr) => {
-              if (migErr) return res.status(500).json({ error: 'DB_ERROR' });
-              return runUpdate();
-            });
-            return;
-          }
-          if (shouldMigrateCategoriaColumn(err)) {
-            ensureCategoriaColumn((migErr) => {
-              if (migErr) return res.status(500).json({ error: 'DB_ERROR' });
-              return runUpdate();
-            });
-            return;
-          }
-          return res.status(500).json({ error: 'DB_ERROR' });
-        }
-        if (!this.changes) return res.status(404).json({ error: 'NOT_FOUND' });
-        return res.status(200).json({
-          id_marcador: id,
-          nombre: String(nombre).trim(),
-          descripcion: descripcion ? String(descripcion) : '',
-          icono: icono ? String(icono).trim() : null,
-          expira_en: expiraEn,
-          categoria: categoria ? String(categoria).trim() : null
-        });
-      }
+  try {
+    const updated = await Marcador.findByIdAndUpdate(
+      id,
+      {
+        Nombre: String(nombre).trim(),
+        Descripcion: descripcion ? String(descripcion) : '',
+        Icono: icono ? String(icono).trim() : null,
+        ExpiraEn: expiraEn,
+        Categoria: categoria ? String(categoria).trim() : null
+      },
+      { new: true }
     );
-  };
 
-  runUpdate();
+    if (!updated) return res.status(404).json({ error: 'NOT_FOUND' });
+
+    res.status(200).json({
+      id_marcador: updated._id,
+      nombre: updated.Nombre,
+      descripcion: updated.Descripcion,
+      icono: updated.Icono,
+      expira_en: updated.ExpiraEn,
+      categoria: updated.Categoria
+    });
+  } catch (err) {
+    console.error('DB error on UPDATE:', err);
+    res.status(500).json({ error: 'DB_ERROR' });
+  }
 });
 
 export default router;

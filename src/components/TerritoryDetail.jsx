@@ -2,10 +2,16 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import Navbar from './Navbar';
 
-import cerroEsperanzaHero from '@/assets/cerros/Cerro esperanza/Cerro Esperanza.jpg';
-import cerroEsperanzaAlt1 from '@/assets/cerros/Cerro esperanza/D_NQ_NP_2X_994969-MLC89050195320_082025-F-terreno-cerro-esperanza-valparaiso.jpg';
-import cerroMariposaHero from '@/assets/cerros/Cerro mariposa/maripo00.jpg';
-import cerroMariposaAlt1 from '@/assets/cerros/Cerro mariposa/winebox.jpg';
+// Carga dinámica de todas las imágenes de exposición
+const ALL_EXPO_IMAGES = import.meta.glob('../assets/cerros/*/Fotos/Exposicion/*.{jpg,jpeg,png,webp,gif}', { eager: true, import: 'default' });
+
+// Carga dinámica de archivos no-JS (audios, documentos, videos, etc.)
+// Usamos query string ?url para que Vite los trate como assets estáticos y no intente parsearlos como JS
+const ALL_CERRO_ASSETS = import.meta.glob('../assets/cerros/**/*.*', { 
+  eager: true, 
+  import: 'default',
+  query: '?url' 
+});
 
 const TERRITORIES = [
   { id: 1, name: 'Esperanza', icon: '🌅', description: 'Sector de esperanza y renovación costera' },
@@ -39,34 +45,68 @@ const DEFAULT_MEDIA = {
     src: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&h=250&fit=crop',
     alt: 'Vista del territorio'
   },
-  thumbs: [
-    {
-      src: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=200&h=150&fit=crop',
-      alt: 'Naturaleza'
-    },
-    {
-      src: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=200&h=150&fit=crop',
-      alt: 'Paisaje'
-    }
-  ]
+  thumbs: []
 };
 
-const TERRITORY_MEDIA_BY_SLUG = {
-  [slugify('Esperanza')]: {
-    hero: { src: cerroEsperanzaHero, alt: 'Cerro Esperanza' },
-    thumbs: [
-      { src: cerroEsperanzaAlt1, alt: 'Cerro Esperanza' },
-      { src: cerroEsperanzaHero, alt: 'Cerro Esperanza' }
-    ]
-  },
-  [slugify('Mariposa')]: {
-    hero: { src: cerroMariposaHero, alt: 'Cerro Mariposa' },
-    thumbs: [
-      { src: cerroMariposaAlt1, alt: 'Cerro Mariposa' },
-      { src: cerroMariposaHero, alt: 'Cerro Mariposa' }
-    ]
-  }
-};
+function getTerritoryMedia(slug) {
+  const territoryImages = Object.entries(ALL_EXPO_IMAGES)
+    .filter(([path]) => {
+      const parts = path.split('/');
+      const cerroDir = parts[3];
+      if (!cerroDir) return false;
+      const cererDirSlug = slugify(cerroDir);
+      const targetSlug = slugify(slug);
+      return cererDirSlug.includes(targetSlug) || targetSlug.includes(cererDirSlug);
+    })
+    .map(([_, src]) => src);
+
+  if (territoryImages.length === 0) return DEFAULT_MEDIA;
+
+  return {
+    hero: {
+      src: territoryImages[0],
+      alt: `Vista de ${slug}`
+    },
+    thumbs: territoryImages.slice(1).map((src, idx) => ({
+      src,
+      alt: `Imagen ${idx + 2} de ${slug}`
+    }))
+  };
+}
+
+function getFolderContent(slug, folderName) {
+  // Estructura para agrupar por subcarpetas
+  const grouped = {};
+
+  Object.entries(ALL_CERRO_ASSETS).forEach(([path, src]) => {
+    const parts = path.split('/');
+    const cerroDir = parts[3];
+    const category = parts[4]; // Audio, Documentos, Fotos, Videos
+    if (!cerroDir || !category) return;
+
+    const cerroDirSlug = slugify(cerroDir);
+    const targetSlug = slugify(slug);
+
+    const matchCerro = cerroDirSlug.includes(targetSlug) || targetSlug.includes(cerroDirSlug);
+    const matchCategory = category.toLowerCase() === folderName.toLowerCase();
+
+    if (matchCerro && matchCategory) {
+      // Determinar si hay subcarpetas después de la categoría
+      // Ejemplo: ../assets/cerros/Cerro esperanza/Fotos/SubCarpeta/imagen.jpg
+      // parts[0]="..", [1]="assets", [2]="cerros", [3]="Cerro esperanza", [4]="Fotos", [5]="SubCarpeta", [6]="imagen.jpg"
+      const subPathParts = parts.slice(5, -1);
+      const subFolder = subPathParts.length > 0 ? subPathParts.join(' / ') : 'Principal';
+      const fileName = parts[parts.length - 1].split('?')[0];
+
+      if (!grouped[subFolder]) {
+        grouped[subFolder] = [];
+      }
+      grouped[subFolder].push({ path, src, fileName });
+    }
+  });
+
+  return grouped;
+}
 
 export default function TerritoryDetail() {
   const navigate = useNavigate();
@@ -77,6 +117,53 @@ export default function TerritoryDetail() {
   const [isLoadingMarkers, setIsLoadingMarkers] = useState(false);
   const [zones, setZones] = useState([]);
   const [openProblemas, setOpenProblemas] = useState(false);
+  const [selectedFolder, setSelectedFolder] = useState(null); // 'Audio', 'Documentos', 'Fotos', 'Videos'
+  const [currentSubPath, setCurrentSubPath] = useState([]); // Array de strings representando la profundidad
+
+  const folderGroups = useMemo(() => {
+    if (!slug || !selectedFolder) return {};
+    return getFolderContent(slug, selectedFolder);
+  }, [slug, selectedFolder]);
+
+  // Obtener el contenido del nivel actual basado en currentSubPath
+  const currentView = useMemo(() => {
+    if (!selectedFolder) return { folders: [], files: [] };
+    
+    const pathKey = currentSubPath.length > 0 ? currentSubPath.join(' / ') : 'Principal';
+    
+    // Si estamos en la raíz (Principal), queremos mostrar las otras subcarpetas como "carpetas"
+    if (currentSubPath.length === 0) {
+      const allSubFolders = Object.keys(folderGroups).filter(k => k !== 'Principal');
+      const rootFiles = folderGroups['Principal'] || [];
+      return {
+        folders: allSubFolders.map(name => name.split(' / ')[0]).filter((v, i, a) => a.indexOf(v) === i),
+        files: rootFiles
+      };
+    }
+
+    // Si estamos dentro de una subcarpeta
+    const currentPrefix = currentSubPath.join(' / ');
+    const folders = [];
+    const files = folderGroups[currentPrefix] || [];
+
+    // Buscar subcarpetas que empiecen con el prefijo actual
+    Object.keys(folderGroups).forEach(key => {
+      if (key.startsWith(currentPrefix + ' / ')) {
+        const remaining = key.replace(currentPrefix + ' / ', '');
+        const nextLevel = remaining.split(' / ')[0];
+        if (!folders.includes(nextLevel)) folders.push(nextLevel);
+      }
+    });
+
+    return { folders, files };
+  }, [folderGroups, currentSubPath, selectedFolder]);
+
+  const hasContent = Object.keys(folderGroups).length > 0;
+
+  // Resetear subPath al cambiar de carpeta principal
+  useEffect(() => {
+    setCurrentSubPath([]);
+  }, [selectedFolder]);
 
   if (!territory) {
     return (
@@ -201,8 +288,10 @@ export default function TerritoryDetail() {
 
   const media = useMemo(() => {
     if (!slug) return DEFAULT_MEDIA;
-    return TERRITORY_MEDIA_BY_SLUG[slug] || DEFAULT_MEDIA;
+    return getTerritoryMedia(slug);
   }, [slug]);
+
+  const remainingPhotosCount = media.thumbs.length > 2 ? media.thumbs.length - 2 : 0;
 
   return (
     <div className="min-h-screen bg-[#F4E9DC]">
@@ -316,37 +405,200 @@ export default function TerritoryDetail() {
               )}
 
               <div className="flex gap-3">
-                <a href={mapHref} className="px-4 py-2 bg-[#2a9d8f] text-white rounded-lg hover:bg-[#005f73] transition">Ver en mapa</a>
-                <Link to="/mibarrio" className="px-4 py-2 bg-white border border-[#E9C46A] text-[#005f73] rounded-lg hover:border-[#2a9d8f] transition">Volver</Link>
+                <a href={mapHref} className="px-4 py-2 bg-[#2a9d8f] text-white rounded-lg hover:bg-[#005f73] transition shadow-md font-semibold">Ver en mapa</a>
+                <Link to="/mibarrio" className="px-4 py-2 bg-white border border-[#E9C46A] text-[#005f73] rounded-lg hover:border-[#2a9d8f] transition font-semibold">Volver</Link>
               </div>
             </div>
-            <div className="md:w-80 flex flex-col gap-3">
-              <div className="rounded-xl overflow-hidden border border-[#E9C46A]">
-                <img 
-                  src={media.hero.src}
-                  alt={media.hero.alt}
-                  className="w-full h-40 object-cover"
-                />
+            
+            <div className="md:w-80 flex flex-col gap-4">
+              {/* Botones de carpetas */}
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: 'Audio', icon: '🎵', label: 'Audios' },
+                  { id: 'Documentos', icon: '📄', label: 'Docs' },
+                  { id: 'Fotos', icon: '📸', label: 'Fotos' },
+                  { id: 'Videos', icon: '🎥', label: 'Videos' }
+                ].map(btn => (
+                  <button
+                    key={btn.id}
+                    onClick={() => setSelectedFolder(btn.id)}
+                    className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${
+                      selectedFolder === btn.id 
+                        ? 'bg-[#E9C46A] border-[#005f73] text-[#005f73] shadow-inner' 
+                        : 'bg-white border-[#E9C46A] text-gray-700 hover:bg-[#F4E9DC]'
+                    }`}
+                  >
+                    <span className="text-xl mb-1">{btn.icon}</span>
+                    <span className="text-xs font-bold uppercase tracking-wider">{btn.label}</span>
+                  </button>
+                ))}
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-lg overflow-hidden border border-[#E9C46A]">
+
+              {/* Galería Exposicion */}
+              <div className="flex flex-col gap-3">
+                <div className="rounded-xl overflow-hidden border border-[#E9C46A] shadow-sm bg-gray-100">
                   <img 
-                    src={media.thumbs[0]?.src}
-                    alt={media.thumbs[0]?.alt}
-                    className="w-full h-24 object-cover"
+                    src={media.hero.src}
+                    alt={media.hero.alt}
+                    className="w-full h-48 object-cover hover:scale-105 transition duration-300"
                   />
                 </div>
-                <div className="rounded-lg overflow-hidden border border-[#E9C46A]">
-                  <img 
-                    src={media.thumbs[1]?.src}
-                    alt={media.thumbs[1]?.alt}
-                    className="w-full h-24 object-cover"
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  {media.thumbs.slice(0, 2).map((thumb, idx) => (
+                    <div key={idx} className="rounded-lg overflow-hidden border border-[#E9C46A] relative group bg-gray-100">
+                      <img 
+                        src={thumb.src}
+                        alt={thumb.alt}
+                        className="w-full h-24 object-cover group-hover:scale-110 transition duration-300"
+                      />
+                      {idx === 1 && remainingPhotosCount > 0 && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center pointer-events-none">
+                          <span className="text-white font-bold text-lg">+{remainingPhotosCount}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {media.thumbs.length === 0 && (
+                    <div className="col-span-2 rounded-lg bg-gray-100 h-24 flex items-center justify-center border border-dashed border-gray-300">
+                      <span className="text-gray-400 text-xs italic">Sin más fotos de exposición</span>
+                    </div>
+                  )}
+                  {media.thumbs.length === 1 && (
+                     <div className="rounded-lg bg-gray-100 h-24 border border-dashed border-gray-300"></div>
+                  )}
                 </div>
               </div>
             </div>
           </div>
         </div>
+
+        {/* Modal de Contenido de Carpeta */}
+        {selectedFolder && (
+          <div 
+            className="fixed inset-0 z-[60] flex items-center justify-center px-4 py-8 bg-black/60 backdrop-blur-sm"
+            onClick={() => setSelectedFolder(null)}
+          >
+            <div 
+              className="w-full max-w-4xl bg-white rounded-3xl shadow-2xl border border-[#E9C46A] overflow-hidden flex flex-col max-h-[85vh]"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="px-8 py-5 bg-[#E9C46A] text-[#005f73] flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">
+                    {selectedFolder === 'Audio' ? '🎵' : selectedFolder === 'Documentos' ? '📄' : selectedFolder === 'Fotos' ? '📸' : '🎥'}
+                  </span>
+                  <h2 className="text-xl font-bold uppercase tracking-tight">
+                    {selectedFolder} - {territory.name}
+                  </h2>
+                </div>
+                <button 
+                  onClick={() => setSelectedFolder(null)}
+                  className="p-2 hover:bg-white/20 rounded-full transition text-[#005f73]"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+              </div>
+
+              <div className="p-8 overflow-y-auto flex-1 bg-[#F4E9DC]/30">
+                {!hasContent ? (
+                  <div className="text-center py-20">
+                    <div className="text-5xl mb-4 opacity-20">📂</div>
+                    <p className="text-gray-500 font-medium">Aún no hay archivos en la carpeta {selectedFolder.toLowerCase()}.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Breadcrumbs / Navegación superior */}
+                    <div className="flex items-center gap-2 text-sm font-bold text-[#005f73] bg-white/50 p-2 rounded-lg border border-[#E9C46A]/20">
+                      <button 
+                        onClick={() => setCurrentSubPath([])}
+                        className="hover:underline opacity-70 hover:opacity-100"
+                      >
+                        {selectedFolder.toUpperCase()}
+                      </button>
+                      {currentSubPath.map((part, i) => (
+                        <React.Fragment key={i}>
+                          <span>/</span>
+                          <button 
+                            onClick={() => setCurrentSubPath(currentSubPath.slice(0, i + 1))}
+                            className="hover:underline opacity-70 hover:opacity-100"
+                          >
+                            {part.toUpperCase()}
+                          </button>
+                        </React.Fragment>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {/* Mostrar Carpetas */}
+                      {currentView.folders.map((folderName) => (
+                        <button
+                          key={folderName}
+                          onClick={() => setCurrentSubPath([...currentSubPath, folderName])}
+                          className="bg-white p-4 rounded-2xl border border-[#E9C46A]/50 shadow-sm hover:shadow-md hover:border-[#005f73] transition-all flex items-center gap-4 group text-left"
+                        >
+                          <div className="w-12 h-12 rounded-xl bg-[#E9C46A]/30 flex items-center justify-center shrink-0 text-2xl group-hover:scale-110 transition-transform">
+                            📁
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-[#005f73] truncate">
+                              {folderName}
+                            </p>
+                            <p className="text-[10px] text-gray-400 uppercase font-bold tracking-widest mt-1">
+                              Carpeta
+                            </p>
+                          </div>
+                        </button>
+                      ))}
+
+                      {/* Mostrar Archivos */}
+                      {currentView.files.map((item, idx) => (
+                        <div 
+                          key={idx} 
+                          className="bg-white p-4 rounded-2xl border border-[#E9C46A]/50 shadow-sm hover:shadow-md transition-all flex items-center gap-4 group"
+                        >
+                          <div className="w-12 h-12 rounded-xl bg-[#F4E9DC] flex items-center justify-center shrink-0 text-xl group-hover:rotate-12 transition-transform">
+                            {selectedFolder === 'Audio' ? '🎵' : selectedFolder === 'Documentos' ? '📄' : selectedFolder === 'Fotos' ? '🖼️' : '🎬'}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-[#005f73] truncate" title={item.fileName}>
+                              {item.fileName}
+                            </p>
+                            <p className="text-[10px] text-gray-400 uppercase font-bold tracking-widest mt-1">
+                              {item.fileName.split('.').pop()}
+                            </p>
+                          </div>
+                          <a 
+                            href={item.src} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="px-3 py-2 rounded-lg bg-[#2a9d8f] text-white text-[10px] font-bold hover:bg-[#005f73] transition-colors"
+                          >
+                            ABRIR
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+
+                    {currentView.folders.length === 0 && currentView.files.length === 0 && (
+                       <div className="text-center py-10 opacity-40 italic text-sm">
+                         Esta carpeta está vacía
+                       </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              <div className="px-8 py-4 border-t border-gray-100 flex justify-end bg-gray-50">
+                <button 
+                  onClick={() => setSelectedFolder(null)}
+                  className="px-6 py-2 bg-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-300 transition-colors"
+                >
+                  CERRAR
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

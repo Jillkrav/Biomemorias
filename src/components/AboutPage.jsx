@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import Navbar from './Navbar';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import colaboradoresBg from '@/assets/colaboradores-bg.jpg';
-import felipeImg from '@/assets/About/Felipe Vergara.jpg';
-import ghislaineImg from '@/assets/About/Ghislaine Barría González.png';
-import marioImg from '@/assets/About/Mario Recabal Marambio.png';
- 
+const colaboradoresBg = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/colaboradores-bg.jpg";
+const felipeImg = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/About/Felipe%20Vergara.jpg";
+const ghislaineImg = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/About/Ghislaine%20Barr%C3%ADa%20Gonz%C3%A1lez.png";
+const marioImg = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/About/Mario%20Recabal%20Marambio.png";
 
 const AboutPage = () => {
     const collaborators = [

@@ -1,11 +1,9 @@
 import React from 'react';
 import Navbar from './Navbar';
 import { Link } from 'react-router-dom';
-import bannerImage from '../assets/Fondo.jpg';
-import overlayImage from '../assets/text-overlay.svg';
-import brandLogo from '../assets/Nuestra QUinta Costa.png';
-import { Bold } from 'lucide-react';
-
+const bannerImage = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/Fondo.jpg";
+const overlayImage = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/text-overlay.svg";
+const brandLogo = "https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/Nuestra%20QUinta%20Costa.png";
 const HomePage = () => {
     return (
         <div className="h-screen overflow-hidden bg-[#f5f5f0]">
