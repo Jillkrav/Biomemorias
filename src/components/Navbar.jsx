@@ -103,19 +103,9 @@ const Navbar = () => {
 
                     {/* Right Side Icons & Lang */}
                     <div className="flex items-center space-x-1 px-3 py-2 bg-[#e5ce8c] md:self-start">
-                        <div className="relative group cursor-pointer mr-2">
-                            <div className="bg-[#009b9f] text-white px-2 py-1 flex items-center gap-1 text-[10px] rounded">
-                                ESPAÑOL <ChevronDown size={14} color="#e5ce8c" />
-                            </div>
-                        </div>
 
-                        <div className="flex items-center gap-1">
-                            <div className="bg-[#F4E9DC] rounded-full p-1 cursor-pointer hover:scale-110 transition-transform"><Facebook size={14} className="text-[#e5ce8c]" /></div>
-                            <div className="bg-[#F4E9DC] rounded-full p-1 cursor-pointer hover:scale-110 transition-transform"><Instagram size={14} className="text-[#e5ce8c]" /></div>
-                            <div className="bg-[#F4E9DC] rounded-full p-1 cursor-pointer hover:scale-110 transition-transform"><Mail size={14} className="text-[#e5ce8c]" /></div>
-                            <div className="bg-[#F4E9DC] rounded-full p-1 cursor-pointer hover:scale-110 transition-transform"><Type size={14} className="text-[#e5ce8c]" /></div>
-                            <div className="bg-[#F4E9DC] rounded-full p-1 cursor-pointer hover:scale-110 transition-transform"><Eye size={14} className="text-[#e5ce8c]" /></div>
-                        </div>
+
+
                     </div>
                 </div>
             </div>

@@ -6,23 +6,29 @@ const HeroCarousel = ({ title }) => {
   const [banners, setBanners] = useState([]);
 
   useEffect(() => {
-    // Carga dinámica de imágenes desde GitHub API
-    const GITHUB_API_URL = 'https://api.github.com/repos/Jillkrav/Biomemorias/contents/src/assets/Carrusel';
-    const GITHUB_RAW_BASE = 'https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/Carrusel/';
-
     const fetchImages = async () => {
       try {
-        const response = await fetch(GITHUB_API_URL);
+        const response = await fetch('/api/github/files?path=src/assets/Carrusel');
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
         const data = await response.json();
         
         if (Array.isArray(data)) {
           const imageUrls = data
             .filter(file => file.name.match(/\.(jpg|jpeg|png|svg|webp)$/i))
-            .map(file => `${GITHUB_RAW_BASE}${encodeURIComponent(file.name)}`);
+            .map(file => file.download_url);
           setBanners(imageUrls);
         }
       } catch (error) {
-        console.error("Error fetching carousel images from GitHub:", error);
+        console.error("Error fetching carousel images dynamically, using fallback:", error);
+        // Fallback a JSDelivr si el proxy falla
+        setBanners([
+          'https://cdn.jsdelivr.net/gh/Jillkrav/Biomemorias@main/src/assets/Carrusel/Fondo.jpg',
+          'https://cdn.jsdelivr.net/gh/Jillkrav/BioMemorias@main/src/assets/Carrusel/esperanza%20instalaciones.jpg'
+        ]);
       }
     };
 

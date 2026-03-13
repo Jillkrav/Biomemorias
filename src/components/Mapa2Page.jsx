@@ -37,28 +37,39 @@ const TERRITORIES = [
 const Mapa2Page = () => {
   const location = useLocation();
   const [iconFiles, setIconFiles] = useState({});
-  const GITHUB_API_URL = 'https://api.github.com/repos/Jillkrav/Biomemorias/contents/src/assets/Iconos%20mapa';
-  const GITHUB_RAW_BASE = 'https://raw.githubusercontent.com/Jillkrav/Biomemorias/main/src/assets/Iconos%20mapa/';
 
   useEffect(() => {
     const fetchIcons = async () => {
       try {
-        const response = await fetch(GITHUB_API_URL);
+        const response = await fetch('/api/github/files?path=src/assets/Iconos%20mapa');
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
         const data = await response.json();
         
         if (Array.isArray(data)) {
           const mapping = {};
           data.forEach(file => {
             if (file.name.match(/\.(jpg|jpeg|png|svg|webp)$/i)) {
-              // Mapeamos el nombre que espera el código a la URL raw de GitHub
               const localPath = `../assets/Iconos mapa/${file.name}`;
-              mapping[localPath] = `${GITHUB_RAW_BASE}${encodeURIComponent(file.name)}`;
+              mapping[localPath] = file.download_url;
             }
           });
           setIconFiles(mapping);
         }
       } catch (error) {
-        console.error("Error fetching icons from GitHub:", error);
+        console.error("Error fetching icons dynamically, using fallback:", error);
+        // Fallback a JSDelivr si el proxy falla
+        const mapping = {};
+        const GITHUB_RAW_BASE = 'https://cdn.jsdelivr.net/gh/Jillkrav/Biomemorias@main/src/assets/Iconos%20mapa/';
+        for (let i = 1; i <= 10; i++) {
+          const fileName = `icono (${i}).jpg`;
+          const localPath = `../assets/Iconos mapa/${fileName}`;
+          mapping[localPath] = `${GITHUB_RAW_BASE}${encodeURIComponent(fileName)}`;
+        }
+        setIconFiles(mapping);
       }
     };
 

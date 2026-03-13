@@ -41,7 +41,10 @@ const DEFAULT_MEDIA = {
 
 const GITHUB_REPO = 'Jillkrav/Biomemorias';
 const GITHUB_BRANCH = 'main';
-const GITHUB_API_BASE = `https://api.github.com/repos/${GITHUB_REPO}/contents/src/assets/Cerros`;
+// Usar jsdelivr para evitar límites de la API de GitHub
+const JSDELIVR_BASE = `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@${GITHUB_BRANCH}/src/assets/Cerros`;
+
+const CERRO_FILES = {}; // Se llenará dinámicamente desde el backend
 
 export default function TerritoryDetail() {
   const navigate = useNavigate();
@@ -54,38 +57,11 @@ export default function TerritoryDetail() {
   const [openProblemas, setOpenProblemas] = useState(false);
   const [selectedFolder, setSelectedFolder] = useState(null); 
   const [currentSubPath, setCurrentSubPath] = useState([]);
+  const [lightboxImage, setLightboxImage] = useState(null);
   
   // Estado para todos los assets del cerro actual
   const [allAssets, setAllAssets] = useState([]);
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
-
-  // Función recursiva para obtener archivos de GitHub
-  const fetchGitHubDirectory = useCallback(async (path) => {
-    try {
-      const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${path}`);
-      const data = await response.json();
-      
-      if (!Array.isArray(data)) return [];
-
-      let files = [];
-      for (const item of data) {
-        if (item.type === 'dir') {
-          const subFiles = await fetchGitHubDirectory(item.path);
-          files = [...files, ...subFiles];
-        } else {
-          files.push({
-            path: item.path,
-            src: item.download_url,
-            fileName: item.name
-          });
-        }
-      }
-      return files;
-    } catch (error) {
-      console.error(`Error fetching directory ${path}:`, error);
-      return [];
-    }
-  }, []);
 
   // Cargar assets cuando cambia el territorio
   useEffect(() => {
@@ -94,37 +70,72 @@ export default function TerritoryDetail() {
     const loadAssets = async () => {
       setIsLoadingAssets(true);
       try {
-        // Listamos el directorio raíz de cerros para encontrar la carpeta correcta
-        const response = await fetch(GITHUB_API_BASE);
-        const cerros = await response.json();
-        
-        if (!Array.isArray(cerros)) {
-          throw new Error("GitHub API did not return an array of folders");
-        }
-
-        // Buscamos una carpeta que contenga el nombre del cerro (ignorando mayúsculas/minúsculas)
         const targetName = territory.name.toLowerCase();
-        const targetCerro = cerros.find(c => {
-          const folderName = c.name.toLowerCase();
-          return folderName.includes(targetName) || targetName.includes(folderName);
-        });
         
-        if (targetCerro) {
-          const files = await fetchGitHubDirectory(targetCerro.path);
-          setAllAssets(files);
-        } else {
-          setAllAssets([]);
-        }
+        // Función auxiliar para obtener archivos de JSDelivr como fallback
+        const executeLoad = async () => {
+          try {
+            // Hacemos una sola consulta recursiva y detectamos automáticamente
+            // la carpeta del cerro por los paths devueltos.
+            const basePath = 'src/assets/Cerros';
+            const encodedBasePath = encodeURIComponent(basePath);
+            const treeResp = await fetch(`/api/github/files?path=${encodedBasePath}&recursive=true`);
+            if (!treeResp.ok) throw new Error("Proxy failed");
+
+            const treeFiles = await treeResp.json();
+            if (treeFiles.error) throw new Error(treeFiles.error);
+
+            if (!Array.isArray(treeFiles) || treeFiles.length === 0) {
+              throw new Error('No files returned');
+            }
+
+            // Extraer nombres de carpetas directas bajo src/assets/Cerros/
+            const prefix = `${basePath}/`;
+            const folderNames = Array.from(new Set(
+              treeFiles
+                .map((f) => (f && f.path ? String(f.path) : ''))
+                .filter((p) => p.startsWith(prefix))
+                .map((p) => p.slice(prefix.length).split('/')[0])
+                .filter(Boolean)
+            ));
+
+            const matchedFolderName = folderNames.find((name) => {
+              const folderLower = String(name).toLowerCase();
+              return folderLower.includes(targetName) || targetName.includes(folderLower);
+            });
+
+            if (!matchedFolderName) {
+              throw new Error('No matching folder found');
+            }
+
+            const targetPrefix = `${prefix}${matchedFolderName}/`;
+            const assets = treeFiles
+              .filter((f) => f && f.path && String(f.path).startsWith(targetPrefix))
+              .map((f) => ({
+                path: f.path,
+                src: f.download_url,
+                cdnSrc: f.cdn_url,
+                fileName: f.name
+              }));
+
+            setAllAssets(assets);
+            return;
+          } catch (e) {
+            console.error("Error loading assets:", e.message);
+            setAllAssets([]);
+          }
+        };
+
+        await executeLoad();
       } catch (error) {
-        console.error("Error loading cerro assets from GitHub:", error);
-        setAllAssets([]);
+        console.error("Critical error in loadAssets:", error);
       } finally {
         setIsLoadingAssets(false);
       }
     };
 
     loadAssets();
-  }, [slug, territory, fetchGitHubDirectory]);
+  }, [territory]);
 
   // Lógica para media (exposición)
   const media = useMemo(() => {
@@ -154,20 +165,20 @@ export default function TerritoryDetail() {
     const lowerFolder = selectedFolder.toLowerCase();
 
     allAssets.forEach(asset => {
-      // Path from API is like: "src/assets/Cerros/Cerro esperanza/Fotos/Subfolder/file.jpg"
+      // Path format: "src/assets/Cerros/Cerro esperanza/Audio/file.mp3"
       const parts = asset.path.split('/');
       
-      // La categoría (Fotos, Audio, etc.) está después de la carpeta del cerro
-      // Buscamos el índice donde está "Cerros" y sumamos 2 para llegar a la categoría
-      const cerrosIdx = parts.findIndex(p => p.toLowerCase() === 'cerros');
-      if (cerrosIdx === -1 || parts.length <= cerrosIdx + 2) return;
+      // Encontrar el índice de la carpeta del cerro (ej. "Cerro esperanza")
+      const cerroFolderIdx = parts.findIndex(p => p.toLowerCase().startsWith('cerro '));
+      if (cerroFolderIdx === -1 || parts.length <= cerroFolderIdx + 1) return;
       
-      const category = parts[cerrosIdx + 2];
+      // La categoría (Fotos, Audio, Documentos) está justo después de la carpeta del cerro
+      const category = parts[cerroFolderIdx + 1];
       
       if (!category || category.toLowerCase() !== lowerFolder) return;
 
-      // Todo lo que esté después de la categoría y antes del nombre del archivo es una subcarpeta
-      const subPathParts = parts.slice(cerrosIdx + 3, -1);
+      // Todo lo que esté después de la categoría y antes del archivo es subcarpeta
+      const subPathParts = parts.slice(cerroFolderIdx + 2, -1);
       const subFolder = subPathParts.length > 0 ? subPathParts.join(' / ') : 'Principal';
 
       if (!grouped[subFolder]) grouped[subFolder] = [];
@@ -215,6 +226,7 @@ export default function TerritoryDetail() {
   // Resetear subPath al cambiar de carpeta principal
   useEffect(() => {
     setCurrentSubPath([]);
+    setLightboxImage(null);
   }, [selectedFolder]);
 
   if (!territory) {
@@ -433,8 +445,8 @@ export default function TerritoryDetail() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const id = Number(m && m.id_marcador);
-                                  if (!Number.isFinite(id)) return;
+                                  const id = m && m.id_marcador;
+                                  if (id == null) return;
                                   setOpenProblemas(false);
                                   navigate(`/map?markerId=${encodeURIComponent(String(id))}`);
                                 }}
@@ -599,30 +611,51 @@ export default function TerritoryDetail() {
 
                       {/* Mostrar Archivos */}
                       {currentView.files.map((item, idx) => (
-                        <div 
-                          key={idx} 
-                          className="bg-white p-4 rounded-2xl border border-[#E9C46A]/50 shadow-sm hover:shadow-md transition-all flex items-center gap-4 group"
-                        >
-                          <div className="w-12 h-12 rounded-xl bg-[#F4E9DC] flex items-center justify-center shrink-0 text-xl group-hover:rotate-12 transition-transform">
-                            {selectedFolder === 'Audio' ? '🎵' : selectedFolder === 'Documentos' ? '📄' : selectedFolder === 'Fotos' ? '🖼️' : '🎬'}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="font-bold text-[#005f73] truncate" title={item.fileName}>
+                        selectedFolder === 'Fotos' && item.fileName && item.fileName.match(/\.(jpg|jpeg|png|webp|gif|svg)$/i) ? (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setLightboxImage({ src: item.cdnSrc || item.src, fileName: item.fileName })}
+                            className="bg-white p-3 rounded-2xl border border-[#E9C46A]/50 shadow-sm hover:shadow-md hover:border-[#005f73] transition-all group text-left"
+                          >
+                            <div className="w-full aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 border border-[#E9C46A]/30">
+                              <img
+                                src={item.cdnSrc || item.src}
+                                alt={item.fileName}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                loading="lazy"
+                              />
+                            </div>
+                            <p className="mt-2 text-xs font-bold text-[#005f73] truncate" title={item.fileName}>
                               {item.fileName}
                             </p>
-                            <p className="text-[10px] text-gray-400 uppercase font-bold tracking-widest mt-1">
-                              {item.fileName.split('.').pop()}
-                            </p>
-                          </div>
-                          <a 
-                            href={item.src} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="px-3 py-2 rounded-lg bg-[#2a9d8f] text-white text-[10px] font-bold hover:bg-[#005f73] transition-colors"
+                          </button>
+                        ) : (
+                          <div 
+                            key={idx} 
+                            className="bg-white p-4 rounded-2xl border border-[#E9C46A]/50 shadow-sm hover:shadow-md transition-all flex items-center gap-4 group"
                           >
-                            ABRIR
-                          </a>
-                        </div>
+                            <div className="w-12 h-12 rounded-xl bg-[#F4E9DC] flex items-center justify-center shrink-0 text-xl group-hover:rotate-12 transition-transform">
+                              {selectedFolder === 'Audio' ? '🎵' : selectedFolder === 'Documentos' ? '📄' : selectedFolder === 'Fotos' ? '🖼️' : '🎬'}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-bold text-[#005f73] truncate" title={item.fileName}>
+                                {item.fileName}
+                              </p>
+                              <p className="text-[10px] text-gray-400 uppercase font-bold tracking-widest mt-1">
+                                {item.fileName.split('.').pop()}
+                              </p>
+                            </div>
+                            <a 
+                              href={item.src} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="px-3 py-2 rounded-lg bg-[#2a9d8f] text-white text-[10px] font-bold hover:bg-[#005f73] transition-colors"
+                            >
+                              ABRIR
+                            </a>
+                          </div>
+                        )
                       ))}
                     </div>
 
@@ -642,6 +675,38 @@ export default function TerritoryDetail() {
                 >
                   CERRAR
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {lightboxImage && (
+          <div
+            className="fixed inset-0 z-[70] flex items-center justify-center px-4 py-8 bg-black/80"
+            onClick={() => setLightboxImage(null)}
+          >
+            <div
+              className="w-full max-w-5xl bg-white rounded-2xl border border-[#E9C46A] overflow-hidden shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-4 py-3 bg-[#E9C46A] text-[#005f73] flex items-center justify-between gap-4">
+                <div className="font-bold truncate" title={lightboxImage.fileName}>
+                  {lightboxImage.fileName}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLightboxImage(null)}
+                  className="px-3 py-1 rounded-lg border border-[#005f73]/30 hover:bg-white/40 transition text-sm font-semibold"
+                >
+                  Cerrar
+                </button>
+              </div>
+              <div className="bg-black flex items-center justify-center">
+                <img
+                  src={lightboxImage.src}
+                  alt={lightboxImage.fileName}
+                  className="max-h-[80vh] w-auto max-w-full object-contain"
+                />
               </div>
             </div>
           </div>

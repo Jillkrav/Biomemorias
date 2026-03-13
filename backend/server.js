@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import connectDB from './mongodb.js';
 import localizacionesRoutes from './routes/localizaciones.js';
 import marcadoresRoutes from './routes/marcadores.js';
+import githubRoutes from './routes/github.js';
 
 dotenv.config();
 
@@ -16,18 +17,21 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Connect to MongoDB
-connectDB();
-
+// Registramos las rutas de la API ANTES de cualquier estático o comodín
 app.use('/api/localizaciones', localizacionesRoutes);
 app.use('/api/marcadores', marcadoresRoutes);
+app.use('/api/github', githubRoutes);
+
+// Connect to MongoDB
+connectDB();
 
 const distPath = path.join(__dirname, '../dist');
 app.use(express.static(distPath));
 
 app.get('*', (req, res) => {
-  if (req.path.startsWith('/api/')) {
-    return res.status(404).json({ error: 'API route not found' });
+  // Si la petición empieza con /api/ y llegó aquí, es que no existe el endpoint
+  if (req.originalUrl.startsWith('/api/')) {
+    return res.status(404).json({ error: `API route not found: ${req.originalUrl}` });
   }
   res.sendFile(path.join(distPath, 'index.html'));
 });
